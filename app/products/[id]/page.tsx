@@ -57,6 +57,7 @@ export default async function FullPagePhoto({
           images={product.images ?? []}
           thumbnail={product.thumbnail}
           title={product.title}
+          productId={product.id}
         />
 
         <ProductDetails product={product} searchParams={sp} />
