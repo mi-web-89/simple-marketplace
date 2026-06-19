@@ -24,10 +24,12 @@ export function ProductGrid({
   const [skip, setSkip] = useState(0);
   const [activeCategory, setActiveCategory] = useState("");
   const [query, setQuery] = useState("");
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const fetchProducts = useCallback(
     (params: { q?: string; category?: string; skip?: number }) => {
+      setFetchError(null);
       startTransition(async () => {
         const searchParams = new URLSearchParams({
           limit: String(LIMIT),
@@ -36,11 +38,21 @@ export function ProductGrid({
           ...(params.category ? { category: params.category } : {}),
         });
 
-        const res = await fetch(`/api/products?${searchParams}`);
-        const data = await res.json();
-        setProducts(data.products);
-        setTotal(data.total);
-        setSkip(params.skip ?? 0);
+        try {
+          const res = await fetch(`/api/products?${searchParams}`);
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: "Gagal memuat produk" }));
+            throw new Error(err.error ?? "Gagal memuat produk");
+          }
+
+          const data = await res.json();
+          setProducts(data.products);
+          setTotal(data.total);
+          setSkip(params.skip ?? 0);
+        } catch (err) {
+          setFetchError(err instanceof Error ? err.message : "Terjadi kesalahan");
+        }
       });
     },
     [],
@@ -84,13 +96,26 @@ export function ProductGrid({
         />
       </div>
 
+      {/* Error state */}
+      {fetchError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 mb-6 flex items-center justify-between">
+          <p className="text-sm text-red-700">{fetchError}</p>
+          <button
+            onClick={() => fetchProducts({ q: query, category: activeCategory, skip })}
+            className="px-3 py-1.5 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+          >
+            Coba Lagi
+          </button>
+        </div>
+      )}
+
       {/* Product list with loading overlay */}
       <div className="relative">
         <div
           className={`transition-opacity ${isPending ? "opacity-40" : "opacity-100"}`}
           aria-busy={isPending}
         >
-          {products.length === 0 ? (
+          {!fetchError && products.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               Produk tidak ditemukan
             </div>

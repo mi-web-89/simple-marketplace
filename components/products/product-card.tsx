@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { Product } from "@/lib/types/product";
 import { useCart } from "@/context/cart-context";
+import Link from "next/link";
 
 export function ProductCard({ product }: { product: Product }) {
   const { addToCart } = useCart();
@@ -12,6 +13,7 @@ export function ProductCard({ product }: { product: Product }) {
   return (
     <div className="border rounded-xl overflow-hidden hover:shadow-md transition-shadow">
       <div className="aspect-square bg-gray-50 overflow-hidden">
+        <Link href={`/products/${product.id}`} className="block w-full h-full"> 
         <Image
           src={product.thumbnail}
           alt={product.title}
@@ -20,6 +22,7 @@ export function ProductCard({ product }: { product: Product }) {
           loading="eager"
           className="w-full h-full object-contain p-3"
         />
+        </Link>
       </div>
 
       <div className="p-3 space-y-2">

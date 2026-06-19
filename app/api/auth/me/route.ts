@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
+import { withErrorHandler, ApiError } from "@/lib/api-error";
 
-export async function GET() {
+export const GET = withErrorHandler(async () => {
   const user = await getSession();
 
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    throw ApiError.unauthorized();
   }
 
   return NextResponse.json({ user });
-}
+});

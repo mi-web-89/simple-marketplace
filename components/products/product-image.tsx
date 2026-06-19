@@ -1,13 +1,16 @@
 import Image from "next/image";
+import Link from "next/link";
 
 export function ProductImages({
   images,
   thumbnail,
   title,
+  productId,
 }: {
   images: string[];
   thumbnail: string;
   title: string;
+  productId: number;
 }) {
   const mainImage = images[0] ?? thumbnail;
   console.log('images:', images);
@@ -16,6 +19,7 @@ export function ProductImages({
   return (
     <div>
       <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden relative mb-3">
+        <Link href={`/photo/${productId}`}>
         <Image
           src={mainImage}
           alt={title}
@@ -24,6 +28,7 @@ export function ProductImages({
           className="object-cover"
           loading="eager"
         />
+        </Link>
       </div>
 
       {images.length > 1 && (
