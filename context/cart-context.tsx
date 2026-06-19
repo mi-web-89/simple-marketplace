@@ -10,6 +10,8 @@ import {
   ReactNode,
 } from "react";
 import { Cart, CartItem, Product } from "@/lib/types/product";
+import { fetchClient } from "@/lib/fetch-client";
+import { useToast } from "./toast-context";
 
 interface CartContextType {
   cart: Cart | null;
@@ -25,7 +27,6 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | null>(null);
 
-// Helper: hitung ulang total cart setelah optimistic update
 function recalcCart(cart: Cart): Cart {
   const totalQuantity = cart.products.reduce((s, p) => s + p.quantity, 0);
   const total = cart.products.reduce((s, p) => s + p.price * p.quantity, 0);
@@ -58,10 +59,11 @@ async function persistCartUpdate(
   cartId: number,
   products: { id: number; quantity: number }[],
 ) {
-  await fetch(`/api/carts/${cartId}`, {
+  return fetchClient<{ cart: Cart }>(`/api/carts/${cartId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ products }),
+    module: "cart-context",
   });
 }
 
@@ -76,68 +78,73 @@ export function CartProvider({
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const cartId = cart?.id;
+  const { addToast } = useToast();
 
-  const addToCart = useCallback((product: Product) => {
-    // 1. Optimistic update — langsung update UI
-    setCart((prev) => {
-      const base = prev ?? createEmptyCart();
+  const addToCart = useCallback(
+    (product: Product) => {
+      setCart((prev) => {
+        const base = prev ?? createEmptyCart();
 
-      const existing = base.products.find((p) => p.id === product.id);
-      let updatedProducts: CartItem[];
+        const existing = base.products.find((p) => p.id === product.id);
+        let updatedProducts: CartItem[];
 
-      if (existing) {
-        updatedProducts = base.products.map((p) =>
-          p.id === product.id ? { ...p, quantity: p.quantity + 1 } : p,
-        );
-      } else {
-        updatedProducts = [
-          ...base.products,
-          {
-            id: product.id,
-            title: product.title,
-            price: product.price,
-            quantity: 1,
-            total: product.price,
-            discountPercentage: product.discountPercentage,
-            discountedTotal:
-              product.price * (1 - product.discountPercentage / 100),
-            thumbnail: product.thumbnail,
-          },
-        ];
-      }
-
-      return recalcCart({ ...base, products: updatedProducts });
-    });
-
-    setIsOpen(true);
-
-    // 2. Sync ke server di background
-    startTransition(async () => {
-      try {
-        const res = await fetch("/api/carts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ productId: product.id, quantity: 1 }),
-        });
-        const { cart: serverCart } = await res.json();
-        // Update id cart dari server (untuk PUT berikutnya)
-        if (serverCart?.id) {
-          setCart((prev) =>
-            prev ? { ...prev, id: serverCart.id } : serverCart,
+        if (existing) {
+          updatedProducts = base.products.map((p) =>
+            p.id === product.id ? { ...p, quantity: p.quantity + 1 } : p,
           );
+        } else {
+          updatedProducts = [
+            ...base.products,
+            {
+              id: product.id,
+              title: product.title,
+              price: product.price,
+              quantity: 1,
+              total: product.price,
+              discountPercentage: product.discountPercentage,
+              discountedTotal:
+                product.price * (1 - product.discountPercentage / 100),
+              thumbnail: product.thumbnail,
+            },
+          ];
         }
-      } catch {
-        console.error("[CART] Gagal sync ke server");
-        // Bisa rollback di sini kalau perlu
-      }
-    });
-  }, []);
+
+        return recalcCart({ ...base, products: updatedProducts });
+      });
+
+      setIsOpen(true);
+
+      startTransition(async () => {
+        try {
+          const { cart: serverCart } = await fetchClient<{ cart: Cart }>(
+            "/api/carts",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ productId: product.id, quantity: 1 }),
+              module: "cart-context",
+            },
+          );
+
+          if (serverCart?.id) {
+            setCart((prev) =>
+              prev ? { ...prev, id: serverCart.id } : serverCart,
+            );
+          }
+
+          addToast(`${product.title} ditambahkan ke keranjang`, "success");
+        } catch {
+          addToast("Gagal menyimpan ke cart. Coba lagi.", "error");
+        }
+      });
+    },
+    [addToast],
+  );
 
   const updateQuantity = useCallback(
     (productId: number, quantity: number) => {
       if (quantity < 1) return;
 
-      // Optimistic
       setCart((prev) => {
         if (!prev) return prev;
         return recalcCart({
@@ -148,22 +155,20 @@ export function CartProvider({
         });
       });
 
-      // Sync
       startTransition(async () => {
         if (!cartId) return;
         try {
           await persistCartUpdate(cartId, [{ id: productId, quantity }]);
         } catch {
-          console.error("[CART] Gagal sync ke server");
+          addToast("Gagal memperbarui jumlah. Coba lagi.", "error");
         }
       });
     },
-    [cartId],
+    [cartId, addToast],
   );
 
   const removeItem = useCallback(
     (productId: number) => {
-      // Optimistic
       setCart((prev) => {
         if (!prev) return prev;
         return recalcCart({
@@ -172,17 +177,16 @@ export function CartProvider({
         });
       });
 
-      // Sync — kirim quantity 0 untuk remove
       startTransition(async () => {
         if (!cartId) return;
         try {
           await persistCartUpdate(cartId, [{ id: productId, quantity: 0 }]);
         } catch {
-          console.error("[CART] Gagal sync ke server");
+          addToast("Gagal menghapus item. Coba lagi.", "error");
         }
       });
     },
-    [cartId],
+    [cartId, addToast],
   );
 
   const openCart = useCallback(() => setIsOpen(true), []);

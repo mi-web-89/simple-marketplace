@@ -8,6 +8,8 @@ import {
   ReactNode,
 } from "react";
 import { User } from "@/lib/types/auth";
+import { fetchClient } from "@/lib/fetch-client";
+import { useToast } from "./toast-context";
 
 interface AuthContextType {
   user: User | null;
@@ -27,41 +29,53 @@ export function AuthProvider({
 }) {
   const [user, setUser] = useState<User | null>(initialUser);
   const [isLoading, setIsLoading] = useState(false);
+  const { addToast } = useToast();
 
-  const login = useCallback(async (username: string, password: string) => {
-    setIsLoading(true);
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
+  const login = useCallback(
+    async (username: string, password: string) => {
+      setIsLoading(true);
+      try {
+        const data = await fetchClient<{ user: User }>("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+          module: "auth-context",
+        });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? "Login gagal");
+        setUser(data.user);
+        addToast("Login berhasil", "success");
+
+        window.location.href = "/dashboard";
+      } catch (err) {
+        addToast(
+          err instanceof Error ? err.message : "Login gagal",
+          "error",
+        );
+        throw err;
+      } finally {
+        setIsLoading(false);
       }
-
-      const data = await res.json();
-      setUser(data.user);
-
-      // Hard redirect agar middleware & Server Component re-run
-      window.location.href = "/dashboard";
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    },
+    [addToast],
+  );
 
   const logout = useCallback(async () => {
     setIsLoading(true);
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await fetchClient("/api/auth/logout", {
+        method: "POST",
+        module: "auth-context",
+      });
       setUser(null);
+      addToast("Logout berhasil", "success");
+
       window.location.href = "/login";
+    } catch {
+      addToast("Gagal logout. Coba lagi.", "error");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [addToast]);
 
   return (
     <AuthContext.Provider value={{ user, isLoading, login, logout }}>
